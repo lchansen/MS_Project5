@@ -1,80 +1,23 @@
-/*
- * Copyright (c) 2016 RedBear
- * 
- * Permission is hereby granted, free of charge, to any person obtaining a copy of this software and associated documentation files (the "Software"), 
- * to deal in the Software without restriction, including without limitation the rights to use, copy, modify, merge, publish, distribute, sublicense, 
- * and/or sell copies of the Software, and to permit persons to whom the Software is furnished to do so, subject to the following conditions:
- * 
- * The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.
- * 
- * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
- * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
- * LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS 
- * IN THE SOFTWARE.
- */
- 
-/*
- * Download RedBear "BLE Controller" APP from APP store(IOS)/Play Store(Android) to play with this sketch
- */
- 
-/******************************************************
- *                      Macros
- ******************************************************/
-/* 
- * Defaultly disabled. More details: https://docs.particle.io/reference/firmware/photon/#system-thread 
- */
-//SYSTEM_THREAD(ENABLED);
-
-/*
- * Defaultly disabled. If BLE setup is enabled, when the Duo is in the Listening Mode, it will de-initialize and re-initialize the BT stack.
- * Then it broadcasts as a BLE peripheral, which enables you to set up the Duo via BLE using the RedBear Duo App or customized
- * App by following the BLE setup protocol: https://github.com/redbear/Duo/blob/master/docs/listening_mode_setup_protocol.md#ble-peripheral 
- * 
- * NOTE: If enabled and upon/after the Duo enters/leaves the Listening Mode, the BLE functionality in your application will not work properly.
- */
-//BLE_SETUP(ENABLED);
-
-/*
- * SYSTEM_MODE:
- *     - AUTOMATIC: Automatically try to connect to Wi-Fi and the Particle Cloud and handle the cloud messages.
- *     - SEMI_AUTOMATIC: Manually connect to Wi-Fi and the Particle Cloud, but automatically handle the cloud messages.
- *     - MANUAL: Manually connect to Wi-Fi and the Particle Cloud and handle the cloud messages.
- *     
- * SYSTEM_MODE(AUTOMATIC) does not need to be called, because it is the default state. 
- * However the user can invoke this method to make the mode explicit.
- * Learn more about system modes: https://docs.particle.io/reference/firmware/photon/#system-modes .
- */
 #if defined(ARDUINO) 
 SYSTEM_MODE(SEMI_AUTOMATIC); 
 #endif
 
-/* 
- * BLE peripheral preferred connection parameters:
- *     - Minimum connection interval = MIN_CONN_INTERVAL * 1.25 ms, where MIN_CONN_INTERVAL ranges from 0x0006 to 0x0C80
- *     - Maximum connection interval = MAX_CONN_INTERVAL * 1.25 ms,  where MAX_CONN_INTERVAL ranges from 0x0006 to 0x0C80
- *     - The SLAVE_LATENCY ranges from 0x0000 to 0x03E8
- *     - Connection supervision timeout = CONN_SUPERVISION_TIMEOUT * 10 ms, where CONN_SUPERVISION_TIMEOUT ranges from 0x000A to 0x0C80
- */
 #define MIN_CONN_INTERVAL          0x0028 // 50ms. 
 #define MAX_CONN_INTERVAL          0x0190 // 500ms. 
 #define SLAVE_LATENCY              0x0000 // No slave latency. 
 #define CONN_SUPERVISION_TIMEOUT   0x03E8 // 10s. 
 
-// Learn about appearance: http://developer.bluetooth.org/gatt/characteristics/Pages/CharacteristicViewer.aspx?u=org.bluetooth.characteristic.gap.appearance.xml
 #define BLE_PERIPHERAL_APPEARANCE  BLE_APPEARANCE_UNKNOWN
 
-#define BLE_DEVICE_NAME            "Simple Controls"
+#define BLE_DEVICE_NAME            "LukeOscarAndre"
 
 #define CHARACTERISTIC1_MAX_LEN    3
 #define CHARACTERISTIC2_MAX_LEN    3
 
-#define DIGITAL_OUT_PIN            D2
-#define DIGITAL_IN_PIN             A4
-#define PWM_PIN                    D3
-#define SERVO_PIN                  D4
-#define ANALOG_IN_PIN              A5
-
-Servo myservo;
+#define PWM_PIN                    D0
+#define BUTTON_PIN                 D1
+#define ANALOG_POT_PIN             A0
+#define ANALOG_PR_PIN              A1
 
 /******************************************************
  *               Variable Definitions
@@ -99,32 +42,6 @@ static uint8_t  conn_param[8] = {
   LOW_BYTE(CONN_SUPERVISION_TIMEOUT), HIGH_BYTE(CONN_SUPERVISION_TIMEOUT)
 };
 
-/* 
- * BLE peripheral advertising parameters:
- *     - advertising_interval_min: [0x0020, 0x4000], default: 0x0800, unit: 0.625 msec
- *     - advertising_interval_max: [0x0020, 0x4000], default: 0x0800, unit: 0.625 msec
- *     - advertising_type: 
- *           BLE_GAP_ADV_TYPE_ADV_IND 
- *           BLE_GAP_ADV_TYPE_ADV_DIRECT_IND 
- *           BLE_GAP_ADV_TYPE_ADV_SCAN_IND 
- *           BLE_GAP_ADV_TYPE_ADV_NONCONN_IND
- *     - own_address_type: 
- *           BLE_GAP_ADDR_TYPE_PUBLIC 
- *           BLE_GAP_ADDR_TYPE_RANDOM
- *     - advertising_channel_map: 
- *           BLE_GAP_ADV_CHANNEL_MAP_37 
- *           BLE_GAP_ADV_CHANNEL_MAP_38 
- *           BLE_GAP_ADV_CHANNEL_MAP_39 
- *           BLE_GAP_ADV_CHANNEL_MAP_ALL
- *     - filter policies: 
- *           BLE_GAP_ADV_FP_ANY 
- *           BLE_GAP_ADV_FP_FILTER_SCANREQ 
- *           BLE_GAP_ADV_FP_FILTER_CONNREQ 
- *           BLE_GAP_ADV_FP_FILTER_BOTH
- *     
- * Note:  If the advertising_type is set to BLE_GAP_ADV_TYPE_ADV_SCAN_IND or BLE_GAP_ADV_TYPE_ADV_NONCONN_IND, 
- *        the advertising_interval_min and advertising_interval_max should not be set to less than 0x00A0.
- */
 static advParams_t adv_params = {
   .adv_int_min   = 0x0030,
   .adv_int_max   = 0x0030,
@@ -162,6 +79,10 @@ static boolean analog_enabled = false;
 
 // Input pin state.
 static byte old_state = LOW;
+
+//My Vars
+static uint8_t led_value = 0;
+static int timer_rate = 0; //if set to zero, do not reschedule timer
 
 /******************************************************
  *               Function Definitions
@@ -215,33 +136,26 @@ int gattWriteCallback(uint16_t value_handle, uint8_t *buffer, uint16_t size) {
       Serial.print(" ");
     }
     Serial.println(" ");
-    //Process the data
-    //TODO
-    //data[0] == 0x01 : turn led on
-    //data[0] == 0x02 : turn led off
-    //data[0] == 0x03 : set led to a certain brightness (val in data[1])
-    //data[0] == 0x04 : set servo to certain position
+    
+    //Refer to our defined SCHEMA
     if (characteristic1_data[0] == 0x01) { // Command is to control digital out pin
-      if (characteristic1_data[1] == 0x01)
-         RGB.color(255, 255, 255);
-      else
-         RGB.color(0, 0, 0);
+      led_value = characteristic1_data[1];
+      analogWrite(PWM_PIN, led_value);
+      Serial.println("BLE Set Led Level" + String(led_value));
     }
-    else if (characteristic1_data[0] == 0xA0) { // Command is to enable analog in reading
-      if (characteristic1_data[1] == 0x01)
-        analog_enabled = true;
-      else
-        analog_enabled = false;
+    else if (characteristic1_data[0] == 0x02) { // set led polling rate
+      //set led polling rate from characteristic1_data[1]
+      //todo: poll the led value once
     }
-    else if (characteristic1_data[0] == 0x02) { // Command is to control Servo pin
-      myservo.write(characteristic1_data[1]);
-    }
-    else if (characteristic1_data[0] == 0x04) { // Command is to initialize all.
-      analog_enabled = false;
-      myservo.write(0);
-      analogWrite(PWM_PIN, 0);
-      digitalWrite(DIGITAL_OUT_PIN, LOW);
-      old_state = LOW;
+    else if (characteristic1_data[0] == 0x03) { // set photoresistor polling rate
+      timer_rate = characteristic1_data[1] * 10; //*10ms
+      if(timer_rate==0){
+        ble.removeTimer(&characteristic2);
+      } else {
+        ble.setTimer(&characteristic2, timer_rate);//2000ms
+        ble.addTimer(&characteristic2);
+      }
+      
     }
   }
   return 0;
@@ -255,36 +169,18 @@ int gattWriteCallback(uint16_t value_handle, uint8_t *buffer, uint16_t size) {
  * @retval None
  */
 static void  characteristic2_notify(btstack_timer_source_t *ts) {
-  if (analog_enabled) { // if analog reading enabled.
-    //Serial.println("characteristic2_notify analog reading ");
+
     // Read and send out
-    uint16_t value = analogRead(ANALOG_IN_PIN);
-    characteristic2_data[0] = (0x0B);
+    uint16_t value = analogRead(ANALOG_PR_PIN);
+    characteristic2_data[0] = (0x01);
     characteristic2_data[1] = (value >> 8);
     characteristic2_data[2] = (value);
-    if (ble.attServerCanSendPacket())
-      ble.sendNotify(character2_handle, characteristic2_data, CHARACTERISTIC2_MAX_LEN);
-  }
-  // If digital in changes, report the state.
-  if (digitalRead(DIGITAL_IN_PIN) != old_state) {
-    Serial.println("characteristic2_notify digital reading ");
-    old_state = digitalRead(DIGITAL_IN_PIN);
-    if (digitalRead(DIGITAL_IN_PIN) == HIGH) {
-      characteristic2_data[0] = (0x0A);
-      characteristic2_data[1] = (0x01);
-      characteristic2_data[2] = (0x00);
+    if (ble.attServerCanSendPacket()){
       ble.sendNotify(character2_handle, characteristic2_data, CHARACTERISTIC2_MAX_LEN);
     }
-    else {
-      characteristic2_data[0] = (0x0A);
-      characteristic2_data[1] = (0x00);
-      characteristic2_data[2] = (0x00);
-      ble.sendNotify(character2_handle, characteristic2_data, CHARACTERISTIC2_MAX_LEN);
-    }
-  }
   // Restart timer.
   // TODO: what is an appropriate time?
-  ble.setTimer(ts, 200);
+  ble.setTimer(ts, timer_rate);
   ble.addTimer(ts);
 }
 
@@ -330,24 +226,28 @@ void setup() {
   ble.startAdvertising();
   Serial.println("BLE start advertising.");
 
-  // Initialize all peripheral.
-  pinMode(DIGITAL_OUT_PIN, OUTPUT);
-  pinMode(DIGITAL_IN_PIN, INPUT_PULLUP);
+  // Initialize all peripherals
   pinMode(PWM_PIN, OUTPUT);
-
-  // Default to internally pull high, change it if you need
-  digitalWrite(DIGITAL_IN_PIN, HIGH);
-
-  myservo.attach(SERVO_PIN);
-  myservo.write(0);
+  pinMode(ANALOG_POT_PIN, INPUT);
+  pinMode(ANALOG_PR_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
+  attachInterrupt(BUTTON_PIN, handle_button, FALLING);
 
   // Start a task to check status.
   characteristic2.process = &characteristic2_notify;
-  ble.setTimer(&characteristic2, 500);//2000ms
-  ble.addTimer(&characteristic2);
+}
 
-  //Custom
-  RGB.control(true);
+void handle_button()
+{
+ static unsigned long last_interrupt_time = 0; //save state locally
+ unsigned long interrupt_time = millis();
+ // If interrupts come faster than 200ms, assume it's a bounce and ignore
+ if (interrupt_time - last_interrupt_time > 200){
+  led_value = map(analogRead(ANALOG_POT_PIN),0,4095,0,255);
+  analogWrite(PWM_PIN, led_value);
+  //TODO: maybe notify the iPhone of the stuff
+ }
+ last_interrupt_time = interrupt_time;
 }
 
 /**
