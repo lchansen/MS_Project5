@@ -1,3 +1,5 @@
+//SYSTEM_THREAD(ENABLED);
+
 #if defined(ARDUINO) 
 SYSTEM_MODE(SEMI_AUTOMATIC); 
 #endif
@@ -74,12 +76,6 @@ static uint8_t characteristic2_data[CHARACTERISTIC2_MAX_LEN] = { 0x00 };
 
 static btstack_timer_source_t characteristic2;
 
-// Mark whether need to notify analog value to client.
-static boolean analog_enabled = false;
-
-// Input pin state.
-static byte old_state = LOW;
-
 //My Vars
 static uint8_t led_value = 0;
 static int timer_rate = 0; //if set to zero, do not reschedule timer
@@ -137,29 +133,37 @@ int gattWriteCallback(uint16_t value_handle, uint8_t *buffer, uint16_t size) {
     }
     Serial.println(" ");
     
-    //Refer to our defined SCHEMA
     if (characteristic1_data[0] == 0x01) { // Command is to control digital out pin
       led_value = characteristic1_data[1];
       analogWrite(PWM_PIN, led_value);
       Serial.println("BLE Set Led Level" + String(led_value));
     }
-    else if (characteristic1_data[0] == 0x02) { // set led polling rate
-      //set led polling rate from characteristic1_data[1]
-      //todo: poll the led value once
+    else if (characteristic1_data[0] == 0x02) { //poll the led value once
+      handle_button();
     }
     else if (characteristic1_data[0] == 0x03) { // set photoresistor polling rate
       timer_rate = characteristic1_data[1] * 10; //*10ms
-      if(timer_rate==0){
+      if(timer_rate<50){
         ble.removeTimer(&characteristic2);
       } else {
-        ble.setTimer(&characteristic2, timer_rate);//2000ms
+        ble.setTimer(&characteristic2, timer_rate);
         ble.addTimer(&characteristic2);
       }
-      
     }
   }
   return 0;
 }
+
+void characteristic2_notify_led_status() {
+  characteristic2_data[0] = (0x02); //"header" for sending a one byte int with the LED's value
+  characteristic2_data[1] = (led_value);
+  characteristic2_data[2] = (0x00);
+  if (ble.attServerCanSendPacket()){
+    ble.sendNotify(character2_handle, characteristic2_data, CHARACTERISTIC2_MAX_LEN);
+    Serial.println("send led status");
+  }
+}
+
 
 /**
  * @brief Timer task for sending status change to client.
@@ -169,8 +173,7 @@ int gattWriteCallback(uint16_t value_handle, uint8_t *buffer, uint16_t size) {
  * @retval None
  */
 static void  characteristic2_notify(btstack_timer_source_t *ts) {
-
-    // Read and send out
+    RGB.color(200,200,200);
     uint16_t value = analogRead(ANALOG_PR_PIN);
     characteristic2_data[0] = (0x01);
     characteristic2_data[1] = (value >> 8);
@@ -182,6 +185,8 @@ static void  characteristic2_notify(btstack_timer_source_t *ts) {
   // TODO: what is an appropriate time?
   ble.setTimer(ts, timer_rate);
   ble.addTimer(ts);
+  delay(25);
+  RGB.color(0,0,0);
 }
 
 /**
@@ -191,6 +196,14 @@ void setup() {
   Serial.begin(115200);
   delay(5000);
   Serial.println("Simple Controls demo.");
+
+    // Initialize all peripherals
+  RGB.control(true);
+  pinMode(PWM_PIN, OUTPUT);
+  pinMode(ANALOG_POT_PIN, INPUT);
+  pinMode(ANALOG_PR_PIN, INPUT);
+  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
+  attachInterrupt(BUTTON_PIN, handle_button, FALLING);
   
   //ble.debugLogger(true);
   // Initialize ble_stack.
@@ -226,13 +239,6 @@ void setup() {
   ble.startAdvertising();
   Serial.println("BLE start advertising.");
 
-  // Initialize all peripherals
-  pinMode(PWM_PIN, OUTPUT);
-  pinMode(ANALOG_POT_PIN, INPUT);
-  pinMode(ANALOG_PR_PIN, INPUT);
-  pinMode(BUTTON_PIN, INPUT_PULLDOWN);
-  attachInterrupt(BUTTON_PIN, handle_button, FALLING);
-
   // Start a task to check status.
   characteristic2.process = &characteristic2_notify;
 }
@@ -241,11 +247,14 @@ void handle_button()
 {
  static unsigned long last_interrupt_time = 0; //save state locally
  unsigned long interrupt_time = millis();
- // If interrupts come faster than 200ms, assume it's a bounce and ignore
- if (interrupt_time - last_interrupt_time > 200){
+ // If interrupts come faster than 250ms, assume it's a bounce and ignore
+ if (interrupt_time - last_interrupt_time > 250){
   led_value = map(analogRead(ANALOG_POT_PIN),0,4095,0,255);
+  if(led_value<5){
+    led_value = 0;
+  }
   analogWrite(PWM_PIN, led_value);
-  //TODO: maybe notify the iPhone of the stuff
+  characteristic2_notify_led_status(); //send the LED value to the iPhone
  }
  last_interrupt_time = interrupt_time;
 }
